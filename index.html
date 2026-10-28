@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smash Clock</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;min-height:100vh;background:#10101c;color:white;
+ font-family:Arial,sans-serif;text-align:center;
+ display:flex;justify-content:center;align-items:center;padding:18px
+}
+.app{width:100%;max-width:480px}
+h1{font-size:38px;color:#ffcc35;margin-bottom:5px}
+.subtitle{color:#aaa;margin-bottom:25px}
+.panel{background:#202034;border-radius:20px;padding:22px;margin:12px 0}
+label{display:block;text-align:left;margin:15px 0 7px}
+select,button{
+ width:100%;padding:15px;border-radius:12px;border:0;
+ font-size:17px;font-weight:bold
+}
+select{background:#30304a;color:white}
+button{cursor:pointer;margin-top:12px}
+.primary{background:#ffcc35;color:#151522}
+.secondary{background:#41415d;color:white}
+.timer{font-size:66px;font-weight:bold;margin:22px 0;color:#ffcc35}
+.target{font-size:22px}
+.small{color:#bbb;font-size:14px}
+.hidden{display:none!important}
+.score{font-size:21px;color:#7cff9b}
+#feedback{font-size:21px;font-weight:bold;min-height:55px}
+#result{font-size:18px;line-height:1.7}
+.arena{position:relative;overflow:hidden}
+.flash{animation:flash .5s ease-in-out 3}
+@keyframes flash{0%,100%{background:#202034}50%{background:#087c55}}
+@keyframes pop{0%{transform:scale(.7)}70%{transform:scale(1.12)}100%{transform:scale(1)}}
+.pop{animation:pop .4s}
+</style>
+</head>
+<body>
+<div class="app">
+ <h1>⏱ SMASH CLOCK</h1>
+ <div class="subtitle">Sua precisão vale pontos!</div>
+
+ <section id="setup" class="panel">
+  <h2>Preparado para jogar?</h2>
+  <label>Modo de jogo</label>
+  <select id="mode">
+   <option value="solo">Cada jogador por si</option>
+   <option value="team">Equipes 2 contra 2</option>
+  </select>
+  <label>Número de jogadores</label>
+  <select id="players">
+   <option value="2">2 jogadores</option>
+   <option value="3">3 jogadores</option>
+   <option value="4">4 jogadores</option>
+  </select>
+  <label>Dificuldade</label>
+  <select id="difficulty">
+   <option value="easy">Fácil</option>
+   <option value="medium">Médio</option>
+   <option value="hard">Difícil</option>
+  </select>
+  <button class="primary" onclick="startGame()">COMEÇAR JOGO</button>
+ </section>
+
+ <section id="game" class="panel hidden arena">
+  <div id="round" class="small"></div>
+  <h2 id="playerName">Jogador 1</h2>
+  <div class="target">Alvo: <strong id="target">5.00</strong> segundos</div>
+  <div id="timer" class="timer">0.00</div>
+  <div id="feedback">Prepare-se!</div>
+  <button id="action" class="primary" onclick="toggleTimer()">▶ INICIAR</button>
+  <div id="result" class="hidden"></div>
+  <div id="scores" class="score"></div>
+  <button id="next" class="secondary hidden" onclick="nextTurn()">PRÓXIMO JOGADOR</button>
+ </section>
+
+ <section id="end" class="panel hidden">
+  <h2>🏆 Fim de jogo!</h2>
+  <div id="ranking"></div>
+  <button class="primary" onclick="location.reload()">JOGAR NOVAMENTE</button>
+ </section>
+</div>
+
+<script>
+let players=[], current=0, target=5, elapsed=0;
+let running=false, finished=false, startAt=0, raf=0;
+let round=1, difficulty='easy', mode='solo', totalRounds=3;
+let turnTimeout=null;
+
+const $=id=>document.getElementById(id);
+
+function startGame(){
+ const count=+$('players').value;
+ mode=$('mode').value;
+ difficulty=$('difficulty').value;
+
+ if(mode==='team' && count!==4){
+  alert('O modo Equipes precisa de 4 jogadores.');
+  return;
+ }
+ players=Array.from({length:count},(_,i)=>({
+  name:'Jogador '+(i+1),score:0,team:i<2?1:2
+ }));
+ current=0;round=1;
+ $('setup').classList.add('hidden');
+ $('end').classList.add('hidden');
+ $('game').classList.remove('hidden');
+ newTurn();
+}
+
+function randomTarget(){
+ if(difficulty==='easy')return 5;
+ if(difficulty==='medium')return 7;
+ return 10;
+}
+
+function newTurn(){
+ running=false;finished=false;elapsed=0;
+ cancelAnimationFrame(raf);
+ clearTimeout(turnTimeout);
+ target=randomTarget();
+ $('timer').textContent='0.00';
+ $('target').textContent=target.toFixed(2);
+ $('playerName').textContent=players[current].name;
+ $('round').textContent='Rodada '+round+' de '+totalRounds;
+ $('feedback').textContent='Tente acertar o tempo!';
+ $('result').classList.add('hidden');
+ $('action').classList.remove('hidden');
+ $('action').textContent='▶ INICIAR';
+ $('action').disabled=false;
+ $('next').classList.add('hidden');
+ $('scores').textContent='Pontuação: '+players.map(p=>p.name+': '+p.score).join(' | ');
+ $('game').classList.remove('flash');
+}
+
+function toggleTimer(){
+ if(finished)return;
+ if(!running){
+  running=true;
+  startAt=performance.now()-elapsed*1000;
+  $('action').textContent='■ PARAR';
+  $('feedback').textContent='AGORA!';
+  tick();
+ }else{
+  running=false;
+  cancelAnimationFrame(raf);
+  elapsed=(performance.now()-startAt)/1000;
+  $('timer').textContent=elapsed.toFixed(2);
+  finishTurn();
+ }
+}
+
+function tick(){
+ if(!running)return;
+ elapsed=(performance.now()-startAt)/1000;
+ $('timer').textContent=elapsed.toFixed(2);
+ if(elapsed>=target+2){
+  running=false;
+  elapsed=target+2;
+  $('timer').textContent=elapsed.toFixed(2);
+  finishTurn();
+  return;
+ }
+ raf=requestAnimationFrame(tick);
+}
+
+function finishTurn(){
+ if(finished)return;
+ finished=true;
+ running=false;
+ cancelAnimationFrame(raf);
+ $('action').disabled=true;
+ $('action').classList.add('hidden');
+ $('result').classList.remove('hidden');
+
+ const difference=Math.abs(elapsed-target);
+ const exact=difference<0.05;
+
+ if(exact){
+  players[current].score+=10;
+  $('feedback').textContent='🎉 PERFEITO!';
+  $('result').innerHTML='💥 Explosão de cores!<br>Tempo: '+elapsed.toFixed(2)+' s<br>Diferença: '+difference.toFixed(2)+' s<br><strong>+10 pontos!</strong>';
+  $('game').classList.add('flash');
+  $('timer').classList.add('pop');
+  setTimeout(()=>$('timer').classList.remove('pop'),600);
+ }else{
+  $('feedback').textContent='⏱ QUASE!';
+  $('result').innerHTML='Tempo registrado: '+elapsed.toFixed(2)+' s<br>Tempo-alvo: '+target.toFixed(2)+' s<br>Diferença: '+difference.toFixed(2)+' s<br>+0 pontos';
+  slowTimer();
+ }
+
+ $('scores').textContent='Pontuação: '+players.map(p=>p.name+': '+p.score).join(' | ');
+ $('next').classList.remove('hidden');
+ $('next').textContent='PRÓXIMO JOGADOR';
+ turnTimeout=setTimeout(nextTurn,3000);
+}
+
+function slowTimer(){
+ const initial=elapsed;
+ const duration=1000;
+ const start=performance.now();
+ function animate(now){
+  const progress=Math.min((now-start)/duration,1);
+  const remaining=initial*(1-progress);
+  $('timer').textContent=remaining.toFixed(2);
+  if(progress<1)requestAnimationFrame(animate);
+  else $('timer').textContent=elapsed.toFixed(2);
+ }
+ requestAnimationFrame(animate);
+}
+
+function nextTurn(){
+ if(!finished)return;
+ clearTimeout(turnTimeout);
+ $('timer').classList.remove('pop');
+ current++;
+ if(current>=players.length){
+  current=0;round++;
+ }
+ if(round>totalRounds){
+  endGame();
+  return;
+ }
+ newTurn();
+}
+
+function endGame(){
+ $('game').classList.add('hidden');
+ $('end').classList.remove('hidden');
+ const ranking=[...players].sort((a,b)=>b.score-a.score);
+ $('ranking').innerHTML=ranking.map((p,i)=>
+  '<p>'+(i===0?'🥇':i===1?'🥈':i===2?'🥉':'')+
+  ' '+p.name+' — '+p.score+' pontos</p>'
+ ).join('');
+}
+</script>
+</body>
+</html>
